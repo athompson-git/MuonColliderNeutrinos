@@ -208,4 +208,78 @@ class EvESFromNeutrinoFlux:
     def get_energy_theta_phi_wgt_arrays(self):
         return np.array(self.el_energies), np.array(self.el_thetas), \
                 np.array(self.el_phis), np.array(self.el_weights)
-    
+
+
+
+
+class EvESFromNeutrinoFluxRunningSSW(EvESFromNeutrinoFlux):
+    def __init__(self, nu_flux, flavor="mu", detector_material=Material("Ar"), detector_length=10.0,
+                 weak_mixing_angle_squared=SSW):
+        super().__init__(nu_flux, flavor, detector_material, detector_length, weak_mixing_angle_squared, True)
+
+    def dsigma_dEr_eves_running(self, Er, Enu, sw20, sw2_deriv, q0, flavor="mu", true_running=True):
+        """
+        Takes in flavors "e", "mu", "tau", "ebar", "mubar", "taubar"
+        """
+        delta = "e" in flavor
+        prefactor = 2 * G_F**2 * M_E / pi
+        if true_running:
+            q = 1e-3*sqrt(2*M_E*Er)
+            sw2 = sw2_running(q)
+        else:
+            q = 1e-3*sqrt(2*M_E*Er)
+            sw2 = sw20 + sw2_deriv*(q - q0)
+        gL = delta + (sw2 - 0.5)
+        gR = sw2
+        if "bar" in flavor:
+            return prefactor*((gR)**2 + power(gL * (1-Er/Enu), 2) - gL*gR*M_E*Er/power(Enu,2))
+
+        return prefactor*((gL)**2 + power(gR * (1-Er/Enu), 2) - gL*gR*M_E*Er/power(Enu,2))
+
+    def simulate_eves_rectangle_rule(self, Er_min=0.0, n_samples=1000, verbose=False,
+                                     sw20=SSW, sw2_deriv=0.0, q0=0.0, true_running=True):
+        self.el_weights = []
+        self.el_energies = []
+        self.el_thetas = []
+        self.el_phis = []
+        self.el_parent_nu_energies = []
+
+
+        # number of targets per cm^3 * det length --> # / cm^2
+        cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
+            * power(HBARC, 2) * (self.det_length * 100)
+        
+        phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples)
+
+        # For each neutrino with energy Enu and angle theta_nu, simulate an Er spectrum
+        # from Er = 0 to Er_max = 2 Enu**2 / (2 Enu + me)
+        if verbose:
+            print("Simulating Neutrino EvES scattering from flux...")
+        for i, nu in enumerate(self.nu_flux):
+            Enu = nu[0]
+            theta_nu = nu[1]
+            wgt = nu[2]
+
+            Er_max = 2*Enu**2 / (2*Enu + M_E)
+
+            # draw sqrt(N) flux samples
+            Er_rnd = np.linspace(Er_min, Er_max, n_samples)
+            mc_wgt = (Er_max - Er_min)/n_samples
+
+            # for each Er subsample, dblquad the flux * cross section integrand
+
+            xs_weights = cross_section_prefactor * mc_wgt * self.dsigma_dEr_eves_running(Er_rnd, Enu,
+                                                                sw20, sw2_deriv, q0,
+                                                                flavor=self.flavor, true_running=true_running)
+        
+            # cosine of electron: cosBeta = ((Enu + me)/(Enu)) * sqrt(Er/(2me))
+            theta_el = arccos(np.clip( ((Enu + M_E)/Enu) * sqrt(Er_rnd/(2*M_E + Er_rnd)), a_min=-1.0, a_max=1.0))
+
+            # actual lab frame angle w.r.t. beam axis
+            theta_z_el = arccos(cos(theta_el)*cos(theta_nu) + cos(phi_el_rnd)*sin(theta_el)*sin(theta_nu))
+
+            self.el_weights.extend(wgt*xs_weights)
+            self.el_energies.extend(Er_rnd)
+            self.el_thetas.extend(theta_z_el)
+            self.el_phis.extend(phi_el_rnd)
+            self.el_parent_nu_energies.extend(np.ones(n_samples)*Enu)
