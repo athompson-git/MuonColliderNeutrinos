@@ -7,7 +7,7 @@ from alplib.materials import *
 
 from tqdm import tqdm
 
-class NeutronFluxMuonRing:
+class NeutrinoFluxMuonRing:
     def __init__(self, Emu=500.0e3, ring_radius=1000.0, N_muons=2.16e20, det_dist=200.0, det_area=25.0,
                  det_length=10.0, det_mat = Material("Ar"), n_samples=1000000,
                  sw2 = SSW) -> None:
@@ -58,106 +58,6 @@ class NeutronFluxMuonRing:
         self.flux_theta_e = lab_angles
         self.flux_weights_mu = diff_flux_mu * mc_wgt  # counts / m^2
         self.flux_weights_e = diff_flux_e * mc_wgt
-        
-    def eves_event_rate(self, er_bins, n_subsamples=5):
-        event_weights_numu = []
-        event_weights_nue = []
-
-
-        # number of targets per cm^3 * det length --> # / cm^2
-        cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
-
-        for i, Er in enumerate(tqdm(er_bins[:-1])):
-            Er_low = er_bins[i]
-            Er_high = er_bins[i+1]
-            bin_width = Er_high - Er_low
-            subsample_width = bin_width/(n_subsamples+1)
-
-            # draw N Er subsamples between Er_low and Er_high
-            Er_subsample_edges = np.linspace(Er_low, Er_high, n_subsamples+1)
-            Er_subsamples = (Er_subsample_edges[1:] + Er_subsample_edges[:-1])/2
-
-            # for each Er subsample, dblquad the flux * cross section integrand
-            # TODO: integrate over detector area only
-            def numu_flux_xs_integrand(Enu, theta, Er):
-                return self.decay_segment * 2 * pi * sin(theta) * (1/self.Emu)*d2NdydOmega_numu(Enu/self.Emu, theta, self.Emu, 1.0, self.Nmu) \
-                    * cross_section_prefactor * dsigma_dEr_eves(Er, Enu, self.sw2, flavor="mu")
-            
-            def nue_flux_xs_integrand(Enu, theta, Er):
-                return self.decay_segment * 2 * pi * sin(theta) * (1/self.Emu)*d2NdydOmega_nue(Enu/self.Emu, theta, self.Emu, 1.0, self.Nmu) \
-                    * cross_section_prefactor * dsigma_dEr_eves(Er, Enu, self.sw2, flavor="e")
-            
-            this_weight_nu_mu = 0.0
-            this_weight_nu_e = 0.0
-            for Er in Er_subsamples:
-                # integrate func(y, x) from x_a to x_b, y_a to y_b
-                # theta bounds: 0 to 1e-2 rad
-                # Enu bounds: Enu_min(Er) to the muon energy
-                theta_rnd = np.random.uniform(0.0, 1e-2, 10000)
-                Enu_rnd = np.random.uniform(Enu_min(Er), self.Emu, 10000)
-                mc_wgt = (1e-2)*(self.Emu - Enu_min(Er))/10000
-                #integral_nu_mu = dblquad(numu_flux_xs_integrand, 0.0, 1e-2, Enu_min(Er), self.Emu, args=(Er,))[0]
-                #integral_nu_e = dblquad(nue_flux_xs_integrand, 0.0, 1e-2, Enu_min(Er), self.Emu, args=(Er,))[0]
-
-                integral_nu_mu = mc_wgt * numu_flux_xs_integrand(Enu_rnd, theta_rnd, Er)
-                integral_nu_e = mc_wgt * nue_flux_xs_integrand(Enu_rnd, theta_rnd, Er)
-
-                # rectangle rule for the Er subsample integration
-                this_weight_nu_mu += np.sum(integral_nu_mu) * subsample_width
-                this_weight_nu_e += np.sum(integral_nu_e) * subsample_width
-            
-            event_weights_numu.append(this_weight_nu_mu)
-            event_weights_nue.append(this_weight_nu_e)
-
-        return event_weights_numu, event_weights_nue
-    
-    def eves_weighted_mc_sim(self, er_bins, n_samples=500000, n_subsamples=10):
-        self.el_weights_nue = []
-        self.el_weights_numu = []
-        self.el_energies = []
-        self.el_thetas = []
-        self.el_phis = []
-
-        # number of targets per cm^3 * det length --> # / cm^2
-        cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
-
-        # log-spaced monte carlo
-        er_rnd = np.random.uniform(er_bins[0], er_bins[-1], n_samples)
-
-        for i, Er in enumerate(tqdm(er_rnd)):
-
-            # draw sqrt(N) flux samples
-            theta_rnd = np.exp(np.random.uniform(log(1e-6), log(1e-2), n_subsamples))
-            Enu_rnd = np.exp(np.random.uniform(log(Enu_min(Er)), log(self.Emu), n_subsamples))
-            phi_el_rnd = np.random.uniform(0.0, 2*pi, n_subsamples)
-            mc_wgt = theta_rnd*Enu_rnd*(er_bins[-1]-er_bins[0])*log(1e-2/1e-6)*log(self.Emu/Enu_min(Er))/(n_samples*n_subsamples)
-
-            # for each Er subsample, dblquad the flux * cross section integrand
-            # TODO: integrate over detector area only
-            def numu_flux_xs_integrand(Enu, theta, Er):
-                return self.decay_segment * 2 * pi * sin(theta) * (1/self.Emu)*d2NdydOmega_numu(Enu/self.Emu, theta, self.Emu, 1.0, self.Nmu) \
-                    * cross_section_prefactor * dsigma_dEr_eves(Er, Enu, self.sw2, flavor="mu")
-            
-            def nue_flux_xs_integrand(Enu, theta, Er):
-                return self.decay_segment * 2 * pi * sin(theta) * (1/self.Emu)*d2NdydOmega_nue(Enu/self.Emu, theta, self.Emu, 1.0, self.Nmu) \
-                    * cross_section_prefactor * dsigma_dEr_eves(Er, Enu, self.sw2, flavor="e")
-            
-            integral_nu_mu = mc_wgt * numu_flux_xs_integrand(Enu_rnd, theta_rnd, Er)
-            integral_nu_e = mc_wgt * nue_flux_xs_integrand(Enu_rnd, theta_rnd, Er)
-
-            # cosine of electron: cosBeta = ((Enu + me)/(Enu)) * sqrt(Er/(2me))
-            theta_el = arccos(np.clip( ((Enu_rnd + M_E)/Enu_rnd) * sqrt(Er/(2*M_E + Er)), a_min=-1.0, a_max=1.0))
-
-            # actual lab frame angle w.r.t. beam axis
-            theta_z_el = arccos(cos(theta_el)*cos(theta_rnd) + cos(phi_el_rnd)*sin(theta_el)*sin(theta_rnd))
-
-            self.el_weights_nue.extend(integral_nu_e)
-            self.el_weights_numu.extend(integral_nu_mu)
-            self.el_energies.extend(np.ones(n_subsamples)*Er)
-            self.el_thetas.extend(theta_z_el)
-            self.el_phis.extend(phi_el_rnd)
     
     def simulate_flux(self, n_samples=100000):
         theta_rnd = np.exp(np.random.uniform(log(1e-8), log(1e-2), n_samples))
@@ -175,26 +75,6 @@ class NeutronFluxMuonRing:
         self.flux_thetas.extend(theta_rnd)
         self.flux_weights_nue.extend(flux_wgts_nue*mc_wgt)
         self.flux_weights_numu.extend(flux_wgts_numu*mc_wgt)
-
-    def simulate_scatter_from_flux(self, n_samples=100, gL_mod=1.0, gR_mod=1.0, s2w=SSW):
-        # simulate Er from Er_min to Er_max for each Enu
-
-        cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
-        
-        flux_enu = np.array(self.flux_energies)
-        theta_enu = np.array(self.flux_thetas)
-        flux_weights_nue = np.array(self.flux_weights_nue)
-        flux_weights_numu = np.array(self.flux_weights_numu)
-        Er_max = 2*flux_enu**2 / (2*flux_enu + M_E)
-
-        Er_rnd = np.random.uniform(0.0, Er_max, size=(n_samples, Er_max.shape[0]))
-        Enu_tiled = np.tile(flux_enu, n_samples)
-        Theta_nu_tiled = np.tile(theta_enu, n_samples)
-        wgts_nue_tiled = np.tile(flux_weights_nue, n_samples)
-        wgts_numu_tiled = np.tile(flux_weights_numu, n_samples)
-
-        
 
 
 
