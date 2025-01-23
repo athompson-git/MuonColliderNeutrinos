@@ -1,5 +1,5 @@
 from muon_decay import *
-from MuonCollider.nu_crosssection import *
+from nu_crosssection import *
 
 import sys
 sys.path.append("../")
