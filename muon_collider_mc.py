@@ -220,14 +220,17 @@ class EvESFromNeutrinoFluxRunningSSW(EvESFromNeutrinoFlux):
     def dsigma_dEr_eves_running(self, Er, Enu, sw20, sw2_deriv, q0, flavor="mu", true_running=True):
         """
         Takes in flavors "e", "mu", "tau", "ebar", "mubar", "taubar"
+        q0 in MeV; the average momentum transfer scale
+        sw2_deriv; the derivative of sin^2(theta_W)(q) to first order (in units of per MeV)
+        sw20; the value of sw2 at q0
         """
         delta = "e" in flavor
         prefactor = 2 * G_F**2 * M_E / pi
         if true_running:
-            q = 1e-3*sqrt(2*M_E*Er)
-            sw2 = sw2_running(q)
+            q = sqrt(2*M_E*Er)
+            sw2 = sw2_running(1e-3*q)  # sw2_running takes in GeV
         else:
-            q = 1e-3*sqrt(2*M_E*Er)
+            q = sqrt(2*M_E*Er)
             sw2 = sw20 + sw2_deriv*(q - q0)
         gL = delta + (sw2 - 0.5)
         gR = sw2
