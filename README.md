@@ -1,14 +1,17 @@
 # Neutrinos from a Muon Storage Ring / Muon Collider
 
-Neutrino flux codes and scattering models for [To appear]
+## Neutrino flux codes and scattering models for [To appear]
+[![DOI](https://zenodo.org/badge/265690633.svg)](https://doi.org/10.5281/zenodo.14934720)
 
 This repository contains python classes and functions to perform weighted monte carlo (MC) simulations and modeling of the neutrino flux from a circular muon storage ring or muon collider. In addition, it contains integration methods to calculate the rates of electron scattering in a detector material using the ```alplib``` library to facilitate some helper classes. 
 
 
 Author: Adrian Thompson
+Contact: ```a.thompson@northwestern.edu```
 
 ### Requirements:
 * alplib: [https://github.com/athompson-git/alplib](https://github.com/athompson-git/alplib)
+* LFS for large flux files
 * numpy, scipy
 * vegas
 * tqdm
