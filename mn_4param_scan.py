@@ -174,8 +174,11 @@ def run_multinest(muon_com_energy, scenario, resume=False):
     if scenario == "MC":
         pymultinest.run(loglike_mc, prior, 4, outputfiles_basename=f'multinest/{scenario}/{muon_com_energy}_{scenario}_',
                         n_live_points=2000, resume=resume, verbose=True)
-    elif scenario == "SR":
-        pymultinest.run(loglike_sr, prior, 4, outputfiles_basename=f'multinest/{scenario}/{muon_com_energy}_{scenario}_',
+    elif scenario == "SR_MINUS":
+        pymultinest.run(loglike_sr_minus, prior, 4, outputfiles_basename=f'multinest/{scenario}/{muon_com_energy}_{scenario}_',
+                        n_live_points=2000, resume=resume, verbose=True)
+    elif scenario == "SR_PLUS":
+        pymultinest.run(loglike_sr_plus, prior, 4, outputfiles_basename=f'multinest/{scenario}/{muon_com_energy}_{scenario}_',
                         n_live_points=2000, resume=resume, verbose=True)
 
 
