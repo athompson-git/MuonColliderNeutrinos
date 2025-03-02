@@ -64,8 +64,8 @@ def loglike_sr_minus(cube, ndim, nparams):
     g_L = cube[2]
     g_R = cube[3]
 
-    gL_SM = (fluxes_dict[COM_ENERGY]["SSW"] - 0.5)
-    gR_SM = fluxes_dict[COM_ENERGY]["SSW"]
+    gL_SM = (fluxes_dict[COM_ENERGY]["SSW_MUM"] - 0.5)
+    gR_SM = fluxes_dict[COM_ENERGY]["SSW_MUM"]
 
     gLe_mod = 2*g_nue*g_L / gL_SM
     gLmu_mod = 2*g_numu*g_L / gL_SM
@@ -93,8 +93,8 @@ def loglike_sr_plus(cube, ndim, nparams):
     g_L = cube[2]
     g_R = cube[3]
 
-    gL_SM = (fluxes_dict[COM_ENERGY]["SSW"] - 0.5)
-    gR_SM = fluxes_dict[COM_ENERGY]["SSW"]
+    gL_SM = (fluxes_dict[COM_ENERGY]["SSW_MUP"] - 0.5)
+    gR_SM = fluxes_dict[COM_ENERGY]["SSW_MUP"]
 
     gLe_mod = 2*g_nue*g_L / gL_SM
     gLmu_mod = 2*g_numu*g_L / gL_SM
@@ -123,8 +123,8 @@ def loglike_mc(cube, ndim, nparams):
     g_L = cube[2]
     g_R = cube[3]
 
-    gL_SM = (fluxes_dict[COM_ENERGY]["SSW"] - 0.5)
-    gR_SM = fluxes_dict[COM_ENERGY]["SSW"]
+    gL_SM = (fluxes_dict[COM_ENERGY]["SSW_MUP"] - 0.5)
+    gR_SM = fluxes_dict[COM_ENERGY]["SSW_MUP"]
 
     gLe_mod = 2*g_nue*g_L / gL_SM
     gLmu_mod = 2*g_numu*g_L / gL_SM
