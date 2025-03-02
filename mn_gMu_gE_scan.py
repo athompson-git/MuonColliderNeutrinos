@@ -103,7 +103,7 @@ def loglike_sr_2param_plus(cube, ndim, nparams):
     signal_spectrum = np.histogram(1e-3*nue_e, weights=nue_wgts, bins=ER_BINS)[0] + \
                       np.histogram(1e-3*numubar_e, weights=numubar_wgts, bins=ER_BINS)[0]
 
-    chi2_val = np.sum((signal_spectrum - null_hypothesis_spectrum_muminus)**2 / null_hypothesis_spectrum_muminus)
+    chi2_val = np.sum((signal_spectrum - null_hypothesis_spectrum_muplus)**2 / null_hypothesis_spectrum_muplus)
 
     # Return the log-likelihood
     return -0.5 * chi2_val
