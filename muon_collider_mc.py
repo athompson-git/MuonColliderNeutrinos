@@ -360,8 +360,8 @@ class EvESFromNeutrinoFlux:
 
 class EvESFromNeutrinoFluxRunningSSW(EvESFromNeutrinoFlux):
     def __init__(self, nu_flux, flavor="mu", detector_material=Material("Ar"), detector_length=10.0,
-                 weak_mixing_angle_squared=SSW):
-        super().__init__(nu_flux, flavor, detector_material, detector_length, weak_mixing_angle_squared, True)
+                 weak_mixing_angle_squared=SSW, energy_only_flux=True):
+        super().__init__(nu_flux, flavor, detector_material, detector_length, weak_mixing_angle_squared, True, energy_only_flux=energy_only_flux)
 
     def dsigma_dEr_eves_running(self, Er, Enu, sw20, sw2_deriv, q0, flavor="mu", true_running=True):
         """
@@ -405,9 +405,14 @@ class EvESFromNeutrinoFluxRunningSSW(EvESFromNeutrinoFlux):
         if verbose:
             print("Simulating Neutrino EvES scattering from flux...")
         for i, nu in enumerate(self.nu_flux):
-            Enu = nu[0]
-            theta_nu = nu[1]
-            wgt = nu[2]
+            if self.energy_only_flux:
+                Enu = nu[0]
+                theta_nu = 0.0
+                wgt = nu[1]
+            else:
+                Enu = nu[0]
+                theta_nu = nu[1]
+                wgt = nu[2]
 
             Er_max = 2*Enu**2 / (2*Enu + M_E)
 
