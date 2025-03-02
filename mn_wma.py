@@ -78,15 +78,15 @@ print("h_nue events = {}".format(h_nue_run))
 
 # SET UP TEST HYPOTHESIS GENERATORS
 eves_gen_nuebar_testHyp = EvESFromNeutrinoFluxRunningSSW(nu_flux=precalc_nue_flux, flavor="ebar", detector_material=Material("Ar"),
-                                    detector_length=10.0)
+                                    detector_length=10.0, energy_only_flux=True)
 eves_gen_numu_testHyp = EvESFromNeutrinoFluxRunningSSW(nu_flux=precalc_numu_flux, flavor="mu", detector_material=Material("Ar"),
-                                    detector_length=10.0)
+                                    detector_length=10.0, energy_only_flux=True)
 
 
 eves_gen_nue_testHyp = EvESFromNeutrinoFluxRunningSSW(nu_flux=precalc_nue_flux, flavor="e", detector_material=Material("Ar"),
-                                    detector_length=10.0)
+                                    detector_length=10.0, energy_only_flux=True)
 eves_gen_numubar_testHyp = EvESFromNeutrinoFluxRunningSSW(nu_flux=precalc_numu_flux, flavor="mubar", detector_material=Material("Ar"),
-                                    detector_length=10.0)
+                                    detector_length=10.0, energy_only_flux=True)
 
 
 
@@ -139,7 +139,7 @@ def loglike(cube, ndim, nparams):
 def run_multinest_2param(muon_com_energy, scenario="MC", resume=False):
     # Run MultiNest
 
-    pymultinest.run(loglike, prior_3TeV, 2, outputfiles_basename=f'multinest/weak_mixing_{muon_com_energy}/{muon_com_energy}_{scenario}_SSW2param2_',
+    pymultinest.run(loglike, prior_3TeV, 2, outputfiles_basename=f'multinest/weak_mixing_{muon_com_energy}/{muon_com_energy}_{scenario}_SSW2param_',
                     n_live_points=2000, resume=resume, verbose=True)
 
 
