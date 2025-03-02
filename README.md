@@ -13,7 +13,6 @@ Contact: ```a.thompson@northwestern.edu```
 * alplib: [https://github.com/athompson-git/alplib](https://github.com/athompson-git/alplib)
 * LFS for large flux files
 * numpy, scipy
-* vegas
 * tqdm
 
 ### File Descriptions

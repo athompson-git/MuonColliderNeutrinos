@@ -6,7 +6,6 @@ sys.path.append("../")
 from alplib.materials import *
 
 from tqdm import tqdm
-import vegas
 
 class NeutrinoFluxMuonRing:
     def __init__(self, Emu=500.0e3, ring_radius=1000.0, N_muons=2.16e20, det_dist=200.0, det_area=25.0,
