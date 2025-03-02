@@ -16,15 +16,15 @@ nue_flux_10TeV = np.genfromtxt("data/nuebar_energy_flux_MeV_SqrtS-10TeV_1e19nu.t
 
 # Q bins to guarantee enough stats (GeV)
 q_bins_500 = np.logspace(np.log10(0.005), np.log10(0.55), 25)
-er_bins_MeV_500 = (q_bins_500)**2 / (2*M_E)
+er_bins_GeV_500 = (q_bins_500)**2 / (2*M_E*1e-3)
 q_centers_500 = (q_bins_500[1:] + q_bins_500[:-1])/2
 
 q_bins_3TeV = np.logspace(np.log10(0.01), np.log10(1.4), 25)
-er_bins_MeV_3TeV = (1e3*q_bins_3TeV)**2 / (2*M_E)
+er_bins_GeV_3TeV = (1e3*q_bins_3TeV)**2 / (2*M_E*1e-3)
 q_centers_3TeV = (q_bins_3TeV[1:] + q_bins_3TeV[:-1])/2
 
 q_bins_10TeV = np.logspace(-1.69, 0.34, 26)
-er_bins_MeV_10TeV = (q_bins_10TeV)**2 / (2*M_E)
+er_bins_GeV_10TeV = (q_bins_10TeV)**2 / (2*M_E*1e-3)
 q_centers_10TeV = (q_bins_10TeV[1:] + q_bins_10TeV[:-1])/2
 
 
@@ -38,7 +38,7 @@ fluxes_dict = {
         "Q_MUM": 0.18954159183676164,
         "SSW_MUP": 0.23743605166405937,
         "Q_MUP": 0.21873393526869891,
-        "er_bins_GeV": er_bins_MeV_500,
+        "er_bins_GeV": er_bins_GeV_500,
         "q_bins_GeV": q_bins_500
     },
     "3TeV": {
@@ -49,7 +49,7 @@ fluxes_dict = {
         "Q_MUM": 0.46397084998088256,
         "SSW_MUP": 0.23690402177488004,
         "Q_MUP": 0.5360353819918382,
-        "er_bins_GeV": er_bins_MeV_3TeV,
+        "er_bins_GeV": er_bins_GeV_3TeV,
         "q_bins_GeV": q_bins_3TeV
     },
     "10TeV": {
@@ -60,7 +60,7 @@ fluxes_dict = {
         "Q_MUM": 0.8462992606999028,
         "SSW_MUP": 0.23641179871496684,
         "Q_MUP": 0.9781049328857653,
-        "er_bins_GeV": er_bins_MeV_10TeV,
+        "er_bins_GeV": er_bins_GeV_10TeV,
         "q_bins_GeV": q_bins_10TeV
     }
 }
