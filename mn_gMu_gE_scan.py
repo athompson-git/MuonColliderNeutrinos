@@ -12,7 +12,7 @@ from flux_config import *
 # SET CENTER OF MASS ENERGY AS INPUT
 COM_ENERGY = "10TeV"
 MUON_ENERGY = fluxes_dict[COM_ENERGY]["Emu"]  # GeV
-ER_BINS = fluxes_dict[COM_ENERGY]["er_bins_MeV"]  # GeV
+ER_BINS = fluxes_dict[COM_ENERGY]["er_bins_GeV"]  # GeV
 
  # Define the event generators and null hypothesis spectrum
 precalc_nue_flux = fluxes_dict[COM_ENERGY]["nue_flux"]
