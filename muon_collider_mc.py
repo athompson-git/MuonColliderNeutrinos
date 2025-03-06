@@ -254,7 +254,7 @@ class EvESFromNeutrinoFlux:
 
         # number of targets per cm^3 * det length --> # / cm^2
         cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
+            * self.det_mat.z[0] * power(HBARC, 2) * (self.det_length * 100)
         
         # For each neutrino with energy Enu and angle theta_nu, simulate an Er spectrum
         # from Er = 0 to Er_max = 2 Enu**2 / (2 Enu + me)
@@ -305,7 +305,7 @@ class EvESFromNeutrinoFlux:
 
         # number of targets per cm^3 * det length --> # / cm^2
         cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
+            * self.det_mat.z[0] * power(HBARC, 2) * (self.det_length * 100)
         
         phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples)
 
@@ -396,7 +396,7 @@ class EvESFromNeutrinoFluxRunningSSW(EvESFromNeutrinoFlux):
 
         # number of targets per cm^3 * det length --> # / cm^2
         cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
+            * self.det_mat.z[0] * power(HBARC, 2) * (self.det_length * 100)
         
         phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples)
 
@@ -458,7 +458,7 @@ class InverseLeptonDecayFromFlux(EvESFromNeutrinoFlux):
 
         # number of targets per cm^3 * det length --> # / cm^2
         cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
-            * power(HBARC, 2) * (self.det_length * 100)
+            * self.det_mat.z[0] * power(HBARC, 2) * (self.det_length * 100)
         
         phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples)
 
