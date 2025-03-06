@@ -83,6 +83,14 @@ def total_nu_xs(Enu, N_nucleons=12):
     return N_nucleons * 1e-38 * (1e-3*Enu)*np.interp(1e-3*Enu, total_xs_dat[:,0], total_xs_dat[:,1])
 
 
+def dsigma_dEl_inv_lepton_decay(El, Enu, ml=M_MU):
+    """
+    Differential cross section for the inverse lepton decay.
+    """
+    return 2*G_F**2 * M_E * ((1 - El/Enu)**2 - (ml**2 - M_E**2)*(1 - El/Enu)/(2*M_E*Enu)) / pi
+
+
+
 M_AXIAL = 1014.0
 
 class NeutrinoNucleonCCQE:
