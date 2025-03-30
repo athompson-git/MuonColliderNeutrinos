@@ -19,11 +19,11 @@ q_bins_500 = np.logspace(np.log10(0.005), np.log10(0.55), 25)
 er_bins_GeV_500 = (q_bins_500)**2 / (2*M_E*1e-3)
 q_centers_500 = (q_bins_500[1:] + q_bins_500[:-1])/2
 
-q_bins_3TeV = np.logspace(np.log10(0.02), np.log10(1.4), 25)
+q_bins_3TeV = np.logspace(np.log10(0.007), np.log10(1.4), 27)
 er_bins_GeV_3TeV = (q_bins_3TeV)**2 / (2*M_E*1e-3)
 q_centers_3TeV = (q_bins_3TeV[1:] + q_bins_3TeV[:-1])/2
 
-q_bins_10TeV = np.logspace(-1.69, 0.34, 26)
+q_bins_10TeV = np.logspace(np.log10(0.009), 0.34, 27)
 er_bins_GeV_10TeV = (q_bins_10TeV)**2 / (2*M_E*1e-3)
 q_centers_10TeV = (q_bins_10TeV[1:] + q_bins_10TeV[:-1])/2
 
