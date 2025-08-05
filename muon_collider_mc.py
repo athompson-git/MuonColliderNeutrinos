@@ -181,7 +181,7 @@ class NeutrinoFluxMuonRing:
         self.theta_ring_muon = theta_ring_muon
         self.theta_ring_antimuon = theta_ring_antimuon
     
-    def simulate_flux(self, n_samples=100000):
+    def simulate_flux(self, n_samples=100000, theta_cutoff=1e-2):
         # Simulates the flux assuming approximate fraction of captured flux
         # using the decay segment fraction of ring circumference
         # Clear vars
@@ -190,10 +190,10 @@ class NeutrinoFluxMuonRing:
         self.flux_energies = []
         self.flux_thetas = []
 
-        theta_rnd = np.exp(np.random.uniform(log(1e-8), log(1e-2), n_samples))
+        theta_rnd = np.exp(np.random.uniform(log(1e-8), log(theta_cutoff), n_samples))
         Enu_rnd = np.exp(np.random.uniform(log(self.Emu*1e-4), log(self.Emu), n_samples))
 
-        mc_wgt = theta_rnd*Enu_rnd*log(1e-2/1e-8)*log(1e4)/(n_samples)
+        mc_wgt = theta_rnd*Enu_rnd*log(theta_cutoff/1e-8)*log(1e4)/(n_samples)
 
         flux_wgts_numu = self.decay_segment * 2 * pi * sin(theta_rnd) * \
             (1/self.Emu)*d2NdydOmega_numu(Enu_rnd/self.Emu, theta_rnd, self.Emu, 1.0, self.Nmu)
