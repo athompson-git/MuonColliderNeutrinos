@@ -142,13 +142,33 @@ class NeutrinoNucleonCCQE:
             (A + self.sign * B * ((4 * self.m_n * ev - qsq - self.m_lepton ** 2) / (self.m_n) ** 2)
                 + C * ((4 * self.m_n * ev - qsq - self.m_lepton ** 2) / (self.m_n) ** 2) ** 2)
 
+    def total_xs(self, ev):
+        """
+        Total cross section in cm^2
+        """
+        if ev < self.m_lepton + (self.m_lepton**2 / (2*self.m_n)):
+            return 0.0
+
+        sqts = np.sqrt(self.m_n ** 2 + 2 * self.m_n * ev)
+        E_l = (sqts ** 2 + self.m_lepton ** 2 - self.m_n ** 2) / (2 * sqts)
+
+        if E_l ** 2 < self.m_lepton ** 2:
+            return 0.0
+        
+        q2_low = -self.m_lepton ** 2 + (sqts ** 2 - self.m_n ** 2) / (sqts) * \
+                (E_l - np.sqrt(E_l ** 2 - self.m_lepton ** 2))
+        q2_high = -self.m_lepton ** 2 + (sqts ** 2 - self.m_n ** 2) / (sqts) * \
+                (E_l + np.sqrt(E_l ** 2 - self.m_lepton ** 2))
+
+        return quad(self.dsigma, q2_low, q2_high, args=ev)[0]
+
     def rates(self, ev, n_samples=1000):
         # CoM Frame
         sqts = np.sqrt(self.m_n ** 2 + 2 * self.m_n * ev)
         E_l = (sqts ** 2 + self.m_lepton ** 2 - self.m_n ** 2) / (2 * sqts)
 
         if E_l ** 2 < self.m_lepton ** 2:
-            return 0
+            return np.array([0]), np.array([0]), np.array([0])
         
         p_l = np.sqrt(E_l**2 - self.m_lepton**2)
         
