@@ -17,17 +17,19 @@ def sw2_running(q):
 
 
 
-def dsigma_dEr_eves(Er, Enu, sw2, flavor="mu", gL_mod=1.0, gR_mod=1.0, running=False):
+def dsigma_dEr_eves(Er, Enu, sw2, flavor="mu", gL_mod=1.0, gR_mod=1.0, cr=0.0, running=False):
     """
     Takes in flavors "e", "mu", "tau", "ebar", "mubar", "taubar"
+    takes the charge radius (cr) in units of cm^2
     """
     delta = "e" in flavor
     prefactor = 2 * G_F**2 * M_E / pi
+    cr_prefactor = (M_W**2 * sw2 / 3) / HBARC**2
     if running:
         q = 1e-3*sqrt(2*M_E*Er)
         sw2 = sw2_running(q)
-    gL = delta + (sw2 - 0.5)*gL_mod
-    gR = sw2*gR_mod
+    gL = delta + (sw2 - 0.5)*gL_mod + cr_prefactor*cr
+    gR = sw2*gR_mod + cr_prefactor*cr
     if "bar" in flavor:
         return prefactor*((gR)**2 + power(gL * (1-Er/Enu), 2) - gL*gR*M_E*Er/power(Enu,2))
 

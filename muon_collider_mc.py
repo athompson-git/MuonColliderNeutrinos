@@ -295,7 +295,14 @@ class EvESFromNeutrinoFlux:
             self.el_parent_nu_energies.extend(np.ones(n_samples)*Enu)
     
     def simulate_eves_rectangle_rule(self, Er_min=0.0, n_samples=1000, verbose=False,
-                                     gL_mod=1.0, gR_mod=1.0, turn_off_cross_term=False):
+                                     gL_mod=1.0, gR_mod=1.0, cr=0.0, turn_off_cross_term=False):
+        """
+        Er_min: the minimum electron recoil considered (MeV)
+        cr: in units of cm^2
+        gL_mod and gR_mod: default = 1. These multiply the default values of the left and right couplings.
+        turn_off_cross_term: This turns off the term proportional to m_e^2 in the cross section for checking its size.
+        """
+        
         self.el_weights = []
         self.el_energies = []
         self.el_thetas = []
@@ -333,11 +340,11 @@ class EvESFromNeutrinoFlux:
             if turn_off_cross_term:
                 xs_weights = cross_section_prefactor * mc_wgt * dsigma_dEr_eves_noME(Er_rnd, Enu, self.sw2,
                                                                    flavor=self.flavor, gL_mod=gL_mod, gR_mod=gR_mod,
-                                                                   running=self.running)
+                                                                   cr=cr, running=self.running)
             else:
                 xs_weights = cross_section_prefactor * mc_wgt * dsigma_dEr_eves(Er_rnd, Enu, self.sw2,
                                                                    flavor=self.flavor, gL_mod=gL_mod, gR_mod=gR_mod,
-                                                                   running=self.running)
+                                                                   cr=cr, running=self.running)
             
             # cosine of electron: cosBeta = ((Enu + me)/(Enu)) * sqrt(Er/(2me))
             theta_el = arccos(np.clip( ((Enu + M_E)/Enu) * sqrt(Er_rnd/(2*M_E + Er_rnd)), a_min=-1.0, a_max=1.0))
