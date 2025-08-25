@@ -1,5 +1,7 @@
 import numpy as np
 from numpy import pi, cos, sin, sqrt, power
+import mpmath as mp
+from scipy.integrate import quad
 
 import sys
 sys.path.append("../")
@@ -7,11 +9,12 @@ sys.path.append("../")
 from alplib.constants import *
 from alplib.cross_section_mc import *
 
-from scipy.integrate import quad
+
 
 
 SSW_DAT = np.genfromtxt("data/sw2_theory_curve_Q2.txt")
 def sw2_running(q):
+    # Takes q in GeV
     return np.interp(q, SSW_DAT[:,0], SSW_DAT[:,1])
 
 
@@ -203,5 +206,272 @@ class NeutrinoNucleonCCQE:
         lepton_lab_thetas = np.array([p4.theta() for p4 in p4_lepton_lab])
 
         return lepton_lab_energies, lepton_lab_thetas, dsigma_weights
+
+
+
+
+# Tau neutrino total CC cross section
+nutau_ccxs_dat = np.genfromtxt("data/xs/nutau_totalCCXS_perGeV_per1e-38cm2.txt")
+def nutau_cc_xs(Enu):
+    # takes Enu in MeV
+    # returns XS in cm^2
+    EnuGeV = 1e-3 * Enu
+    return 1e-38 * EnuGeV * np.interp(EnuGeV, nutau_ccxs_dat[:,0], nutau_ccxs_dat[:,1], left=0.0)
+
+
+
+
+class EvESCrossSectionNLO:
+    """
+    EvES cross section @ NLO [Tomalak and Hill, 1907.03379]
+    """
+    def __init__(self, species='e', sw2=SSW, nlo=True):
+        self.cp = 1
+        if 'bar' in species:
+            self.cp = -1
+        self.species = 'e'
+        if 'mu' in species:
+            self.species = 'mu'
+        if 'tau' in species:
+            self.species = 'tau'
+        
+        self.nlo = nlo
+        self.sw2 = sw2
+        
+        self.delta = ("e" in self.species)
+        self.cc_prefactor = 2 * np.sqrt(2) * G_F
+        self.xs_prefactor = M_E / (4 * np.pi)
+
+        self.cL_nul = self.cc_prefactor * (sw2 - 0.5 + self.delta)
+        self.cR = self.cc_prefactor * sw2
+
+        self.cL_l = self.cc_prefactor * (-0.5 + sw2)
+        self.cL_u = self.cc_prefactor * (0.5 - (2/3)*sw2)
+        self.cL_d = self.cc_prefactor * (-0.5 + (1/3)*sw2)
+        self.cR_l = self.cc_prefactor * sw2
+        self.cR_u = -self.cc_prefactor * (2/3) * sw2
+        self.cR_d = -self.cc_prefactor * (-1/3) * sw2
+    
+    # Momentum dependent couplings
+    def cL_nul_running(self, El):
+        q = 1e-3*np.sqrt(2 * M_E * (El - M_E))  # must pass in GeV
+        return self.cc_prefactor * (sw2_running(q) - 0.5 + self.delta)
+    
+    def cR_running(self, El):
+        q = 1e-3*np.sqrt(2 * M_E * (El - M_E))  # must pass in GeV
+        return self.cc_prefactor * sw2_running(q)
+    
+    # Kinematical factors
+    def IR(self, El, Enu):
+        EnuPrime = M_E + Enu - El
+        return np.power(EnuPrime / Enu, 2)
+    
+    def ILR(self, El, Enu):
+        EnuPrime = M_E + Enu - El
+        return - (M_E / Enu) * (1 - EnuPrime/Enu)
+
+    # QCD and vertex corrections:
+    def PiFF(self, q2, mf, mu, eps=1e-15):
+        # Guard (soft) against division by zero if desired
+        Q2_safe = q2 + eps
+
+        L = np.log((mu**2) / (mf**2))
+        r = 4.0 * (mf**2) / Q2_safe
+        s = np.sqrt(1.0 + r)  # real for Q2>0
+        logarg = (s - 1.0) / (s + 1.0)
+
+        # For Q2>0 and m>0, 0 < (s-1)/(s+1) < 1, so logarg is positive and <1 (log negative), real.
+        term1 = (1.0/3.0) * L + 5.0/9.0
+        term2 = -(4.0 * (mf**2)) / (3.0 * Q2_safe)
+        term3 = (1.0/3.0) * (1.0 - (2.0 * (mf**2)) / Q2_safe) * s * np.log(logarg)
+
+        return term1 + term2 + term3
+
+    # Soft corrections
+    def delta_soft(self, beta, lam=1e-7, eps=1e-2):
+        # eps: the cutoff energy for the soft photon << M_E
+
+        z = (1 - beta) / (1 + beta)
+        L = np.log((1 + beta) / (1 - beta))
+
+        plyl = np.vectorize(lambda x: (mp.polylog(2, x)))
+        term1 = (plyl(z) - (np.pi**2) / 6) / beta
+        term2 = -(2 / beta) * (beta - 0.5 * L) * np.log((2 * eps) / lam)
+        term3 = (L / (2 * beta)) * (1 + np.log(np.sqrt(1 - beta**2) * (1 + beta) / (4 * beta**2)))
+
+        return term1 + term2 + term3 + 1
+
+    def deltaI(self, beta, omega, omegap, *,  eps=1e-2, tiny=1e-15):
+        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+
+        denom = (2.0 * beta / np.where(rho == 0.0, np.inf, rho)) * M_E * omegap
+        cosDelta = (omega**2 - (beta**2 * M_E**2) / np.where(rho == 0.0, np.inf, rho**2) - omegap**2) / denom
+        cosDelta = np.clip(cosDelta, -1.0, 1.0)
+
+        Lbeta = np.log((1.0 + beta) / (1.0 - beta))
+
+        # Argument of the last log; protect against cosΔ -> -1 and any tiny/zero denominators
+        denom_log = beta * M_E * (1.0 + cosDelta)
+        arg = (2.0 * (1.0 + beta) * eps) / np.where(denom_log > 0.0, denom_log, tiny)
+        arg = np.where(arg > 0.0, arg, tiny)
+
+        return (2.0 / beta) * (beta - 0.5 * Lbeta) * np.log(arg)
+
+    def deltaII(self, beta, omega, omegap, eps=1e-15):
+        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+        # cosΔ formula
+        denom = (2.0 * beta / np.where(rho == 0.0, np.inf, rho)) * M_E * omegap
+        cosDelta = (omega**2 - (beta**2 * M_E**2) / np.where(rho == 0.0, np.inf, rho**2) - omegap**2) / denom
+
+        # Numerically clamp cosΔ to [-1,1] to avoid slight excursions
+        cosDelta = np.clip(cosDelta, -1.0, 1.0)
+
+        # Building blocks
+        Lbeta = np.log((1.0 - beta) / (1.0 + beta))  # < 0 for 0<β<1
+
+        # Safe arguments for logs
+        A = (rho * (cosDelta + 1.0)) / (4.0 * beta)
+        A = np.where(A > 0.0, A, eps)  # avoid log(0) or negative due to rounding
+        B = (1.0 - beta * cosDelta) / np.where(rho > 0.0, rho, np.inf)
+        B = np.where(B > 0.0, B, eps)
+
+        # Dilogarithm arguments
+        z1 = (1.0 - beta) / (1.0 + beta)                              # in (0,1)
+        z2 = (cosDelta - 1.0) / (cosDelta + 1.0 + 0.0)                # ≤ 0
+        z3 = z2 * (1.0 + beta) / (1.0 - beta)                         # typically ≤ 0
+
+        # Assemble terms
+        plyl = np.vectorize(lambda x: (mp.polylog(2, x)))
+        t_poly = (0.5 + np.log(A)) * Lbeta \
+                - plyl(z1) -  plyl(z2) +  plyl(z3) \
+                + (np.pi**2)/6.0
+
+        out = (t_poly / beta) + np.log(B) - 1.0
+        return out
+
+    def deltav(self, beta, lam=1e-7):
+        # domain: 0 < beta < 1
+        if np.any(beta <= 0) or np.any(beta >= 1):
+            raise ValueError("beta must be in the range (0, 1) for deltav calculation.")
+        rho  = np.sqrt(1 - beta**2)
+        Lb   = np.log((1 + beta) / (1 - beta))
+
+        termA = (beta - 0.5 * Lb) * mp.log(M_E / lam)
+        termB = ((3 + rho) / 8) * Lb
+        termC = -(1/8) * Lb * np.log(2 * (1 + rho) / rho)
+
+        arg1 = (beta - 1 + rho) / (2 * beta)
+        arg2 = (beta + 1 - rho) / (2 * beta)
+
+        plyl = np.vectorize(lambda x: (mp.polylog(2, x)))
+
+        termD = -0.5 * (plyl(arg1) - plyl(arg2))
+        f1 = (termA + termB + termC + termD) / beta - 1
+
+        return 2 * f1
+    
+    def dsigma_v(self, El, Enu, mu=2.0):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
+        f2 = (M_E / El) / (4 * beta) * np.log((1.0 - beta) / (1.0 + beta))
+
+        dsigma_v = (ALPHA / np.pi) * self.dsigma_dEl_LO(El, Enu)
+
+        return 0.  # TODO(AT): remove as its obsolete
+    
+    def dsigma_NF(self, El, Enu, mu=1.0):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
+        EnuPrime = M_E + Enu - El
+        f2 = (M_E / El) / (4 * beta) * np.log((1.0 - beta) / (1.0 + beta))
+        IL_nf = 1 + (ALPHA/np.pi) * f2 * (0.5 * self.ILR(El, Enu) - (EnuPrime/Enu))
+        IR_nf = IL_nf
+        ILR_nf = 2*(1 + self.IR(El, Enu) - EnuPrime/Enu) - self.ILR(El, Enu)
+        dsigma = 0.0
+        if self.cp == 1:
+            dsigma = self.xs_prefactor * (self.cL_nul**2 * IL_nf + self.cR**2 * IR_nf \
+                                          + self.cL_nul*self.cR*ILR_nf)
+        elif self.cp == -1:
+            dsigma = self.xs_prefactor * (self.cL_nul**2 * IR_nf + self.cR**2 * ILR_nf \
+                                          + self.cL_nul*self.cR*ILR_nf)
+        
+        return dsigma
+
+    def dsigma_dyn(self, El, Enu, mu):
+        q2 = 2 * M_E * (El - M_E)
+
+        # sum over leptons and heavy quarks (charm, bottom, top) in the loop
+        cL_nulSq_dyn_lep = self.cL_nul * (self.cL_l + self.cR_l)
+        cR_Sq_dyn_lep = self.cR * (self.cL_l + self.cR_l)
+        cLcR_dyn_lep = 0.5 * (self.cL_nul + self.cR) * (self.cL_l + self.cR_l)
+
+        cL_nulSq_dyn_up = self.cL_nul * (self.cL_u + self.cR_u)
+        cR_Sq_dyn_up = self.cR * (self.cL_u + self.cR_u)
+        cLcR_dyn_up = 0.5 * (self.cL_nul + self.cR) * (self.cL_u + self.cR_u)
+
+        cL_nulSq_dyn_down = self.cL_nul * (self.cL_d + self.cR_d)
+        cR_Sq_dyn_down = self.cR * (self.cL_d + self.cR_d)
+        cLcR_dyn_down = 0.5 * (self.cL_nul + self.cR) * (self.cL_d + self.cR_d)
+
+        dsigma_lep = self.dsigma_dEl_LO(El, Enu, cL_nulSq_dyn_lep, cR_Sq_dyn_lep, cLcR_dyn_lep)
+        dsigma_up = self.dsigma_dEl_LO(El, Enu, cL_nulSq_dyn_up, cR_Sq_dyn_up, cLcR_dyn_up)
+        dsigma_down = self.dsigma_dEl_LO(El, Enu, cL_nulSq_dyn_down, cR_Sq_dyn_down, cLcR_dyn_down)
+
+        dsigma_dyn_lep_heaavy_quark = (ALPHA/np.pi) * (  -1. * self.PiFF(q2, M_E, mu) * dsigma_lep \
+                                                        -1. * self.PiFF(q2, M_MU, mu) * dsigma_lep \
+                                                        -1. * self.PiFF(q2, M_TAU, mu) * dsigma_lep \
+                                                        + (2/3) * self.PiFF(q2, M_C, mu) * dsigma_up \
+                                                        + (2/3) * self.PiFF(q2, M_TOP, mu) * dsigma_up \
+                                                        + (-1/3) * self.PiFF(q2, M_BOTTOM, mu) * dsigma_down \
+                                                    )
+        # TODO(AT): add uds contribution
+        dsigma_dyn_uds_reduced = self.dsigma_dEl_LO(El, Enu, self.cc_prefactor * self.cL_nul,
+                                                    self.cc_prefactor * self.cR,
+                                                    self.cc_prefactor * (self.cL_nul + self.cR))
+        PiGammaGamma_2GeV = 3.597
+        return dsigma_dyn_lep_heaavy_quark + (ALPHA/np.pi) * (PiGammaGamma_2GeV - 2*self.sw2 * PiGammaGamma_2GeV)*dsigma_dyn_uds_reduced
+
+
+    def dsigma_dEl_LO(self, El, Enu, cL_sq_eff=None, cR_sq_eff=None, cLcR_eff=None):
+        if cL_sq_eff is None:
+            cL_sq_eff = self.cL_nul**2
+        if cR_sq_eff is None:
+            cR_sq_eff = self.cR**2
+        if cLcR_eff is None:
+            cLcR_eff = self.cL_nul * self.cR
+        dsigma = 0.0
+        if self.cp == 1:
+            dsigma = self.xs_prefactor * (cL_sq_eff + cR_sq_eff * self.IR(El, Enu) \
+                                          + cLcR_eff*self.ILR(El, Enu))
+        elif self.cp == -1:
+            dsigma = self.xs_prefactor * (cL_sq_eff * self.IR(El, Enu) + cR_sq_eff \
+                                          + cLcR_eff*self.ILR(El, Enu))
+        
+        return dsigma
+    
+    def dsigma_dEl_LO_running(self, El, Enu):
+        dsigma = 0.0
+        if self.cp == 1:
+            dsigma = self.xs_prefactor * (self.cL_nul_running(El)**2 + self.cR_running(El)**2 * self.IR(El, Enu) \
+                                          + self.cL_nul_running(El)*self.cR_running(El)*self.ILR(El, Enu))
+        elif self.cp == -1:
+            dsigma = self.xs_prefactor * (self.cL_nul_running(El)**2 * self.IR(El, Enu) + self.cR_running(El)**2 \
+                                          + self.cL_nul_running(El)*self.cR_running(El)*self.ILR(El, Enu))
+        
+        return dsigma
+
+    def dsigma_dEl_NLO(self, El, Enu, mu=2000.0):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
+        EnuPrime = M_E + Enu - El
+
+        deltas = (ALPHA/np.pi) * (self.deltav(beta) + self.delta_soft(beta) \
+                                + self.deltaI(beta, Enu, EnuPrime) \
+                                + self.deltaII(beta, Enu, EnuPrime))
+        
+        dsigma_lo_corr = (1 + deltas)*self.dsigma_dEl_LO(El, Enu)
+
+        # TODO(AT): add non factorizable terms
+
+        return dsigma_lo_corr + self.dsigma_dyn(El, Enu, mu) # self.dsigma_NF(El, Enu, mu) +
+
+
 
 
