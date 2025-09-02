@@ -438,14 +438,14 @@ class EvESCrossSectionNLO:
         PiGammaGamma_2GeV = 3.597
         return dsigma_dyn_lep_heaavy_quark + (ALPHA/np.pi) * (PiGammaGamma_2GeV - 2*self.sw2 * PiGammaGamma_2GeV)*dsigma_dyn_uds_reduced
 
-    def I_nonfact(self, xyzrqv, Enu, El):
+    def I_nonfact(self, xyzrqv, El, Enu):
         # Generic non-factorizable kinematic piece
         # takes in tuple of xi, yi, zi, ri, qi, vi (xyzqrv)
         xi, yi, zi, ri, qi, vi = xyzrqv
         prefactor = np.pi**2 / Enu**3
 
         beta = np.sqrt(1 - np.power(M_E/El, 2))
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, np.inf))
+        rho = np.sqrt(1.0 - beta**2)
         l0 = M_E + Enu - El
 
         beta_doppler = (1+beta)/(1-beta)
@@ -461,11 +461,16 @@ class EvESCrossSectionNLO:
         plyl2 = (plyl(1 + 2*Enu/M_E)).astype(float)
         plyl3 = (plyl((1+2*Enu/M_E)/beta_plus_one_over_rho)).astype(float)
 
+        print("zi = {}, yi = {}, log1 = {}".format(zi, yi, np.log(log1_arg)))
+        print("xi = {}, ri = {}, log2 = {}, log3 = {}".format(xi, ri, np.log(log2_arg), np.log(log3_arg)))
+        print("vi = {}, ply1 = {}, ply2 = {}, ply3 = {}".format(vi, plyl1, plyl2, plyl3))
+        print("qi = {}, logbeta = {}".format(qi, np.log(beta_doppler)))
+
         return prefactor * (zi + yi*np.log(log1_arg) + xi*np.log(log2_arg) + ri*log(log3_arg) \
                             + vi*(plyl1 - plyl2 + plyl3 - np.pi**2 / 6) \
                             + qi*np.log(beta_doppler))
 
-    def IL_nonfact(self, Enu, El):
+    def IL_nonfact(self, El, Enu):
         # Non-facttorizable kinematic pieces        
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
@@ -490,21 +495,18 @@ class EvESCrossSectionNLO:
         zLw3 = (3 - beta)/(30*rho) - (3 + 2*beta)/(30*(1+beta))
         zLw4 = 1/15 - rho/(15*(1 + beta))
 
-        zL = (zLw4*Enu**4 
-            + zLw3*Enu**3*M_E*Enu 
-            + zLw2*Enu**2*M_E**2 
-            + zLw*Enu*M_E**3*Enu 
-            + zL0*M_E**4)
+        zL = (zLw4*Enu**4 + zLw3*M_E*Enu**3 + zLw2*Enu**2 * M_E**2 \
+              + zLw*Enu*M_E**3 + zL0*M_E**4) / (M_E**2)
         
-        return self.I_nonfact(np.array([xL, yL, zL, rL, qL, vL]), Enu, El)
+        return self.I_nonfact(np.array([xL, yL, zL, rL, qL, vL]), El=El, Enu=Enu)
 
-    def IR_nonfact(self, Enu, El):
+    def IR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
         l0 = M_E + Enu - El
 
         vR = 0.5 * (l0**2 + M_E**2 * (beta**2 + rho)/rho**2)
-        xR = -l0**2 * (35*l0*M_E**2 - 10*l0**2*M_E + 2*l0**3 - 30*M_E**3) / (15*M_E**3)
+        xR = -l0**2 * (35*l0*M_E**2 - 10*l0**2 * M_E + 2*l0**3 - 30*M_E**3) / (15*M_E**3)
         yR = (-Enu**4 
             - 2*(5 - 1/rho)*M_E*Enu**3
             + (128*beta**2 + 11*rho - 16)/rho**2 * M_E**2*Enu**2
@@ -521,21 +523,18 @@ class EvESCrossSectionNLO:
                 + (-28*beta*rho**2 + 43*beta**2 + 2)/(30*rho*(1 + beta)**2) )*M_E**2 )
         
         
+        zw4 = (1/15) - (1/15) * rho / (1+beta)
         zRw4 = -8/(15*rho) + (18 - beta)/(15*(1 + beta))
         zRw3 = (113*beta**2 - 2*beta - 133)/(30*(1 + beta)*rho) - (143*beta**2 - 34*beta - 133)/(30*rho**2)
         zRw2 = (-339*beta**3 - 805*beta**2 - 353*beta + 851)/(60*rho**3) + (-760*beta**3 - 825*beta**2 + 778*beta + 851)/(60*rho**2*(1 + beta))
         zRw = (beta*((433 - 45*beta)*beta + 44) - 439)/(30*rho**3) + beta*(beta*(27*beta*(11*beta + 1) - 730) - 29) + 439/(30*rho**4)
         zR0 = (270*beta**2 - 269)/(60*rho**3) + (309*beta**4 - 839*beta**2 + 538)/(120*rho**4)
-        zR = (2*Enu**4*Enu**5 
-            + zRw4*Enu**4*M_E**4 
-            + zRw3*Enu**3*M_E**3*Enu 
-            + zRw2*Enu**2*M_E**2*Enu**2 
-            + zRw*M_E**3*Enu**3*Enu**2 
-            + zR0*M_E**5*Enu) / (M_E**2*(M_E + 2*Enu))
+        zR = (2*zw4*Enu**5 + zRw4*M_E*Enu**4 + zRw3*M_E**2 * Enu**3 + zRw2*M_E**3 * Enu**2 \
+            + zRw*Enu*M_E**4 + zR0*M_E**5) / (M_E**2*(M_E + 2*Enu))
         
-        return self.I_nonfact(np.array([xR, yR, zR, rR, qR, vR]), Enu, El)
+        return self.I_nonfact(np.array([xR, yR, zR, rR, qR, vR]), El=El, Enu=Enu)
 
-    def ILR_nonfact(self, Enu, El):
+    def ILR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
         l0 = M_E + Enu - El
@@ -551,7 +550,7 @@ class EvESCrossSectionNLO:
             + beta*M_E*El)
         zLR = (2*l0 + 9*M_E)/6 * (l0 - rho*Enu/(1 + beta))
 
-        return self.I_nonfact(np.array([xLR, yLR, zLR, rLR, qLR, vLR]), Enu, El)
+        return self.I_nonfact(np.array([xLR, yLR, zLR, rLR, qLR, vLR]), El=El, Enu=Enu)
     
     def dsigma_NF_total(self, El, Enu):
         cL_sq_eff = self.cL_nul**2
