@@ -271,21 +271,21 @@ class EvESCrossSectionNLO:
         return - (M_E / Enu) * (1 - EnuPrime/Enu)
 
     # QCD and vertex corrections:
-    def PiFF(self, q2, mf, mu, eps=1e-15):
-        # Guard (soft) against division by zero if desired
-        Q2_safe = q2 + eps
+    def PiFF(self, q2, mf, mu):
 
-        L = np.log((mu**2) / (mf**2))
-        r = 4.0 * (mf**2) / Q2_safe
-        s = np.sqrt(1.0 + r)  # real for Q2>0
-        logarg = (s - 1.0) / (s + 1.0)
+        leading_log = (1/3) * np.log((mu**2) / (mf**2))
+        
+        x = 2.0 * (mf**2) / q2
+        
+        adim_piece = (5/9) - (2*x/3) + (1/3) * (1 - x) * np.sqrt(1 + 2*x) \
+                        * np.log( (np.sqrt(1 + 2*x) - 1)/(np.sqrt(1 + 2*x) + 1) )
+        
+        polynomial_large_x = -(2/15) / x + (1/35) / (x**2)
+        
+        # To avoid machine precision errors when evaluating -inf + inf, use polynomial approx after x>100
 
-        # For Q2>0 and m>0, 0 < (s-1)/(s+1) < 1, so logarg is positive and <1 (log negative), real.
-        term1 = (1.0/3.0) * L + 5.0/9.0
-        term2 = -(4.0 * (mf**2)) / (3.0 * Q2_safe)
-        term3 = (1.0/3.0) * (1.0 - (2.0 * (mf**2)) / Q2_safe) * s * np.log(logarg)
-
-        return term1 + term2 + term3
+        return leading_log + np.heaviside(100.0 - x, 1.0) * adim_piece \
+                            + np.heaviside(x - 100.0, 0.0) * polynomial_large_x
 
     # Soft corrections
     def delta_soft(self, beta, lam=1e-7, eps=1e-2):
@@ -605,7 +605,7 @@ class EvESCrossSectionNLO:
         
         dsigma_lo_corr = (1 + deltas)*self.dsigma_dEl_LO(El, Enu)
 
-        return dsigma_lo_corr + self.dsigma_dyn(El, Enu, mu) + self.dsigma_NF_total(El, Enu)
+        return dsigma_lo_corr + self.dsigma_NF_total(El, Enu) + self.dsigma_dyn(El, Enu, mu)
 
 
 
