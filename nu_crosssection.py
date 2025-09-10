@@ -319,28 +319,24 @@ class EvESCrossSectionNLO:
 
         return (2.0 / beta) * (beta - 0.5 * Lbeta) * np.log(arg)
 
-    def deltaII(self, beta, omega, omegap, eps=1e-15):
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
-        # cosΔ formula
-        denom = (2.0 * beta / np.where(rho == 0.0, np.inf, rho)) * M_E * omegap
-        cosDelta = (omega**2 - (beta**2 * M_E**2) / np.where(rho == 0.0, np.inf, rho**2) - omegap**2) / denom
+    def deltaII(self, beta, Enu, El, eps=1e-15):
+        l0 = M_E + Enu - El
+        rho = np.sqrt(np.clip(1.0 - beta**2, a_min=1e-10, a_max=np.inf))
 
-        # Numerically clamp cosΔ to [-1,1] to avoid slight excursions
-        cosDelta = np.clip(cosDelta, -1.0, 1.0)
+        cosDelta = np.clip((Enu**2 - np.power(beta * El, 2) - l0**2) / (2 * beta * El * l0),
+                           a_min=-1.0, a_max=1.0)
 
         # Building blocks
-        Lbeta = np.log((1.0 - beta) / (1.0 + beta))  # < 0 for 0<β<1
-
-        # Safe arguments for logs
+        Ldoppler = np.log((1.0 - beta) / (1.0 + beta))
+    
+        # Arguments for logs
         A = (rho * (cosDelta + 1.0)) / (4.0 * beta)
-        A = np.where(A > 0.0, A, eps)  # avoid log(0) or negative due to rounding
-        B = (1.0 - beta * cosDelta) / np.where(rho > 0.0, rho, np.inf)
-        B = np.where(B > 0.0, B, eps)
+        B = np.clip((1.0 - beta * cosDelta) / rho, a_min=0.0, a_max=np.inf)
 
         # Dilogarithm arguments
-        z1 = (1.0 - beta) / (1.0 + beta)                              # in (0,1)
-        z2 = (cosDelta - 1.0) / (cosDelta + 1.0 + 0.0)                # ≤ 0
-        z3 = z2 * (1.0 + beta) / (1.0 - beta)                         # typically ≤ 0
+        z1 = (1.0 - beta) / (1.0 + beta)
+        z2 = (cosDelta - 1.0) / (cosDelta + 1.0)
+        z3 = z2 * (1.0 + beta) / (1.0 - beta)
 
         # Assemble terms
         plyl = np.vectorize(lambda x: (mp.polylog(2, x)).real)
@@ -349,11 +345,11 @@ class EvESCrossSectionNLO:
         plyl2 = (plyl(z2)).astype(float)
         plyl3 = (plyl(z3)).astype(float)
 
-        t_poly = (0.5 + np.log(A)) * Lbeta \
+        t_poly = (0.5 + np.log(A)) * Ldoppler \
                 - plyl1 -  plyl2 +  plyl3 \
                 + (np.pi**2)/6.0
 
-        out = (t_poly / beta) + np.log(B) - 1.0
+        out = np.nan_to_num((t_poly / beta) + np.log(B) - 1.0)
         return out
 
     def deltav(self, beta, lam=1e-7):
@@ -438,10 +434,9 @@ class EvESCrossSectionNLO:
         PiGammaGamma_2GeV = 3.597
         return dsigma_dyn_lep_heaavy_quark + (ALPHA/np.pi) * (PiGammaGamma_2GeV - 2*self.sw2 * PiGammaGamma_2GeV)*dsigma_dyn_uds_reduced
 
-    def I_nonfact(self, xyzrqv, El, Enu):
+    def I_nonfact(self, xi, yi, zi, ri, qi, vi, El, Enu):
         # Generic non-factorizable kinematic piece
         # takes in tuple of xi, yi, zi, ri, qi, vi (xyzqrv)
-        xi, yi, zi, ri, qi, vi = xyzrqv
         prefactor = np.pi**2 / Enu**3
 
         beta = np.sqrt(1 - np.power(M_E/El, 2))
@@ -461,11 +456,6 @@ class EvESCrossSectionNLO:
         plyl2 = (plyl(1 + 2*Enu/M_E)).astype(float)
         plyl3 = (plyl((1+2*Enu/M_E)/beta_plus_one_over_rho)).astype(float)
 
-        print("zi = {}, yi = {}, log1 = {}".format(zi, yi, np.log(log1_arg)))
-        print("xi = {}, ri = {}, log2 = {}, log3 = {}".format(xi, ri, np.log(log2_arg), np.log(log3_arg)))
-        print("vi = {}, ply1 = {}, ply2 = {}, ply3 = {}".format(vi, plyl1, plyl2, plyl3))
-        print("qi = {}, logbeta = {}".format(qi, np.log(beta_doppler)))
-
         return prefactor * (zi + yi*np.log(log1_arg) + xi*np.log(log2_arg) + ri*log(log3_arg) \
                             + vi*(plyl1 - plyl2 + plyl3 - np.pi**2 / 6) \
                             + qi*np.log(beta_doppler))
@@ -475,82 +465,76 @@ class EvESCrossSectionNLO:
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
 
-        vL = 0.5 * (M_E**2 / 2 + 2*M_E*Enu + Enu**2)
+        vL = 0.5 * (M_E**2 / 2 + 2*M_E*Enu + Enu**2)  # ch
         xL = (-2/15 * Enu**5/M_E**3 + 1/3 * Enu**3/M_E
             + ( (1 + 3*beta**2)/(3*rho**3) - (4*beta**4 - 11*beta**2 + 7)/(3*rho**4) ) * Enu**2
             + (2/rho**3 - (beta**4 - beta**2 + 2)/rho**4) * M_E*Enu
-            + ( (-7*beta**4 + 14*beta**2 - 22)/(15*rho**4) + (15*beta**4 - 25*beta**2 + 22)/(15*rho**5) ) * M_E**2 )
-        yL = 0.5 * Enu * (Enu - M_E)
-        rL = ( (-(2 + beta)/3 * rho/(1 + beta)**2 + (14 + beta)/6/(1 + beta))*Enu**2
+            + ( (-7*beta**4 + 14*beta**2 - 22)/(15*rho**4) + (15*beta**4 - 25*beta**2 + 22)/(15*rho**5) ) * M_E**2 )  # ch
+        yL = 0.5 * Enu * (Enu - M_E)  # ch
+        rL = ( (-(2 + beta)/3 * rho/(1 + beta)**2 + (4 + beta)/6/(1 + beta))*Enu**2
             + ( (beta - rho**2)/(rho*(1 + beta)) + 0.5*(1 + 1/(1 + beta)**2) )*M_E*Enu
-            + ( (-(17*beta**2 + 36*beta + 22))/(30*(1 + beta)**3)
-                + (14*beta**2 + 43*beta + 44)/(60*(1 + beta)**2) )*M_E**2 )
-        qL = ((1/2* rho/(1 + beta) - (1 + beta)/(2*beta))*Enu**2
-            + beta/(2*rho)*M_E*Enu
-            + (1/2* rho/(1 + beta) - (1 + beta)/(2*beta))*M_E**2)
+            + ( (-(17*beta**2 + 36*beta + 22)*rho)/(30*(1 + beta)**3)
+                + (14*beta**2 + 43*beta + 44)/(60*(1 + beta)**2) )*M_E**2 )  # ch
+        qL = (1/(2*beta) * rho/(1 + beta) - (1 + beta)/(2*beta))*Enu**2 \
+            + beta/(2*rho)*M_E*Enu + (1 - rho) * M_E**2 / (2*beta)  # ch
         
-        zL0 = (25*beta**2 - 49)/(60*rho**3) * (1 - 1/rho) - 8*beta**2/(15*rho**2)
-        zLw = (-20*beta**3 + 51*beta**2 + 38*beta - 105)/(60*rho**3) - (55*beta**3 + 54*beta**2 - 82*beta - 105)/(60*rho**2*(1 + beta))
-        zLw2 = (7*beta**2 + 8*beta - 23)/(30*(1 + beta)*rho) - (15*beta**2 + 6*beta - 23)/(30*rho**2)
-        zLw3 = (3 - beta)/(30*rho) - (3 + 2*beta)/(30*(1+beta))
-        zLw4 = 1/15 - rho/(15*(1 + beta))
+        zL0 = (25*beta**2 - 49)/(60*rho**3) * (1 - 1/rho) - 8*beta**2/(15*rho**2)  # ch
+        zLw = (-20*beta**3 + 51*beta**2 + 38*beta - 105)/(60*rho**3) - (55*beta**3 + 54*beta**2 - 82*beta - 105)/(60*rho**2*(1 + beta))  # ch
+        zLw2 = (7*beta**2 + 8*beta - 23)/(30*(1 + beta)*rho) - (15*beta**2 + 6*beta - 23)/(30*rho**2)  # ch
+        zLw3 = (3 - beta)/(30*rho) - (3 + 2*beta)/(30*(1+beta))  # ch
+        zw4 = (1/15) * (1 - rho/(1 + beta))  # ch
 
-        zL = (zLw4*Enu**4 + zLw3*M_E*Enu**3 + zLw2*Enu**2 * M_E**2 \
-              + zLw*Enu*M_E**3 + zL0*M_E**4) / (M_E**2)
-        
-        return self.I_nonfact(np.array([xL, yL, zL, rL, qL, vL]), El=El, Enu=Enu)
+        zL = (zw4*Enu**4 + zLw3*M_E*Enu**3 + zLw2*Enu**2 * M_E**2 \
+              + zLw*Enu*M_E**3 + zL0*M_E**4) / (M_E**2)  # ch
+        return self.I_nonfact(xL, yL, zL, rL, qL, vL, El=El, Enu=Enu)
 
     def IR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
         l0 = M_E + Enu - El
 
-        vR = 0.5 * (l0**2 + M_E**2 * (beta**2 + rho)/rho**2)
-        xR = -l0**2 * (35*l0*M_E**2 - 10*l0**2 * M_E + 2*l0**3 - 30*M_E**3) / (15*M_E**3)
-        yR = (-Enu**4 
-            - 2*(5 - 1/rho)*M_E*Enu**3
-            + (128*beta**2 + 11*rho - 16)/rho**2 * M_E**2*Enu**2
+        vR = 0.5 * (l0**2 + M_E**2 * (beta**2 + rho)/rho**2)  # ch
+        xR = -l0**2 * (35*l0*M_E**2 - 10*l0**2 * M_E + 2*l0**3 - 30*M_E**3) / (15*M_E**3)  # ch
+        yR = (-Enu**4 - 2*(5 - 1/rho)*M_E*Enu**3
+            + (12*beta**2 + 11*rho - 16)/rho**2 * M_E**2*Enu**2
             + (6*beta**2 + 9*rho - 10)/rho**2 * M_E**3*Enu
-            + (beta**2 + 2*rho - 2)/rho**2 * M_E**4) / (M_E + 2*Enu)**2
-        qR = ((1/2* rho/(1 + beta) - (1 + beta)/(2*beta))*l0**2
+            + (beta**2 + 2*rho - 2)/rho**2 * M_E**4) / (M_E + 2*Enu)**2  # ch
+        qR = ((1/(2*beta) * rho/(1 + beta) - (1 + beta)/(2*beta))*l0**2
             + ((2 - 1/(1 + beta)) - (2 - beta)/(2*rho))*M_E*l0
             + ((4*beta**3 + beta**2 - 4*beta + 2)/(4*beta*rho**2) 
-                + (-beta**3 + 2*beta**2 + beta - 1)/(2*beta*rho*(1 + beta)))*M_E**2)
-        rR = ( (-(2 + beta)/3 * rho/(1 + beta)**2 + (14 + beta)/6/(1 + beta))*l0**2
-            + ( (beta**2 - 5*beta + 1)/(3*rho*(1 + beta)) 
-                + (7*beta**2 + 8*beta - 2)/(6*(1 + beta)**2) )*M_E*l0
-            + ( (-23*beta**3 + 14*beta**2 + 41*beta - 2)/(30*rho*(1 + beta)**2) 
-                + (-28*beta*rho**2 + 43*beta**2 + 2)/(30*rho*(1 + beta)**2) )*M_E**2 )
+                + (-beta**3 + 2*beta**2 + beta - 1)/(2*beta*rho*(1 + beta)))*M_E**2)  # ch
+        rR = (-(2 + beta)/3 * rho/(1 + beta)**2 + (4 + beta)/6/(1 + beta))*l0**2 \
+            + ( (beta**2 - 5*beta + 1)/(3*rho*(1 + beta)) \
+                + (7*beta**2 + 8*beta - 2)/(6*(1 + beta)**2) )*M_E*l0 \
+            + ( (-23*beta**3 + 14*beta**2 + 41*beta - 2)/(30*rho*(1 + beta)**2) \
+                + (-28*beta*rho**2 + 43*beta**2 + 2)/(30*rho**2 * (1 + beta)) )*M_E**2  # ch
         
         
-        zw4 = (1/15) - (1/15) * rho / (1+beta)
-        zRw4 = -8/(15*rho) + (18 - beta)/(15*(1 + beta))
-        zRw3 = (113*beta**2 - 2*beta - 133)/(30*(1 + beta)*rho) - (143*beta**2 - 34*beta - 133)/(30*rho**2)
-        zRw2 = (-339*beta**3 - 805*beta**2 - 353*beta + 851)/(60*rho**3) + (-760*beta**3 - 825*beta**2 + 778*beta + 851)/(60*rho**2*(1 + beta))
-        zRw = (beta*((433 - 45*beta)*beta + 44) - 439)/(30*rho**3) + beta*(beta*(27*beta*(11*beta + 1) - 730) - 29) + 439/(30*rho**4)
-        zR0 = (270*beta**2 - 269)/(60*rho**3) + (309*beta**4 - 839*beta**2 + 538)/(120*rho**4)
+        zw4 = (1/15) * (1 - rho/(1 + beta))  # ch
+        zRw4 = -8/(15*rho) + (8 - beta)/(15*(1 + beta))  # ch
+        zRw3 = (113*beta**2 - 2*beta - 133)/(30*(1 + beta)*rho) - (143*beta**2 - 34*beta - 133)/(30*rho**2)  # ch
+        zRw2 = (-339*beta**3 - 805*beta**2 - 353*beta + 851)/(60*rho**3) + (-760*beta**3 - 825*beta**2 + 778*beta + 851)/(60*rho**2*(1 + beta))  # ch
+        zRw = (beta*((433 - 45*beta)*beta + 44) - 439)/(30*rho**3) + (beta*(beta*(27*beta*(11*beta + 1) - 730) - 29) + 439)/(30*rho**4)  # ch
+        zR0 = (270*beta**2 - 269)/(60*rho**3) + (309*beta**4 - 839*beta**2 + 538)/(120*rho**4)  # ch
         zR = (2*zw4*Enu**5 + zRw4*M_E*Enu**4 + zRw3*M_E**2 * Enu**3 + zRw2*M_E**3 * Enu**2 \
-            + zRw*Enu*M_E**4 + zR0*M_E**5) / (M_E**2*(M_E + 2*Enu))
-        
-        return self.I_nonfact(np.array([xR, yR, zR, rR, qR, vR]), El=El, Enu=Enu)
+            + zRw*Enu*M_E**4 + zR0*M_E**5) / (M_E**2*(M_E + 2*Enu))  # ch
+        return self.I_nonfact(xR, yR, zR, rR, qR, vR, El=El, Enu=Enu)
 
     def ILR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
         l0 = M_E + Enu - El
 
-        vLR = 0.5 * M_E * (2*l0 - M_E)
-        xLR = (3*l0*M_E**2 - 3*l0**2*M_E - 2*l0**3 + 3*M_E**2*Enu) / (3*M_E)
-        yLR = M_E * El * (1 - ((M_E + 2*Enu)**2 - M_E*Enu)/(El*(M_E + 2*Enu)))
+        vLR = 0.5 * M_E * (2*l0 - M_E)  # ch
+        xLR = (3*l0*M_E**2 - 3*l0**2*M_E - 2*l0**3 + 3*M_E**2*Enu) / (3*M_E)  # ch
+        yLR = M_E * El * (1 - ((M_E + 2*Enu)**2 - M_E*Enu)/(El*(M_E + 2*Enu)))  # ch
         rLR = (1/3 * (7 + 5*beta/2 + (2*beta**2 - 4*beta - 7)/rho) * M_E**2/(1 + beta)
-            + (1 + (1 - 2*rho)/(1 + beta))*M_E*Enu)
-        qLR = ((1 - beta)/beta * Enu**2 
-            - 2*M_E*Enu 
-            + (1 + beta/2)/M_E * M_E**2 * (l0 - Enu/M_E) 
-            + beta*M_E*El)
-        zLR = (2*l0 + 9*M_E)/6 * (l0 - rho*Enu/(1 + beta))
+            + (1 + (1 - 2*rho)/(1 + beta))*M_E*Enu)  # ch
+        qLR = ((1 - beta) * Enu**2 - 2*rho*M_E*Enu + (1 + beta/2)*M_E**2) / beta \
+              * (l0 - Enu)/M_E + beta*M_E*El  # ch
+        zLR = (2*l0 + 9*M_E)/6 * (l0 - rho*Enu/(1 + beta))  # ch
 
-        return self.I_nonfact(np.array([xLR, yLR, zLR, rLR, qLR, vLR]), El=El, Enu=Enu)
+        return self.I_nonfact(xLR, yLR, zLR, rLR, qLR, vLR, El=El, Enu=Enu)
     
     def dsigma_NF_total(self, El, Enu):
         cL_sq_eff = self.cL_nul**2
@@ -605,7 +589,7 @@ class EvESCrossSectionNLO:
         
         dsigma_lo_corr = (1 + deltas)*self.dsigma_dEl_LO(El, Enu)
 
-        return dsigma_lo_corr + self.dsigma_NF_total(El, Enu) + self.dsigma_dyn(El, Enu, mu)
+        return dsigma_lo_corr + self.dsigma_dyn(El, Enu, mu) + self.dsigma_NF_total(El, Enu)
 
 
 
