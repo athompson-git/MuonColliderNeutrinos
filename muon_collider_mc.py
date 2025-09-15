@@ -211,7 +211,8 @@ class NeutrinoFluxMuonRing:
 
 class EvESFromNeutrinoFlux:
     def __init__(self, nu_flux, flavor="mu", detector_material=Material("Ar"), detector_length=10.0,
-                 weak_mixing_angle_squared=SSW, ssw_running=False, energy_only_flux=False):
+                 weak_mixing_angle_squared=SSW, ssw_running=False, energy_only_flux=False,
+                 use_nlo=False):
         """
         Takes in a neutrino flux of [energy (MeV), theta(rad), count]
         The flux is already integrated over the detector area
@@ -243,6 +244,12 @@ class EvESFromNeutrinoFlux:
         self.det_length = detector_length
 
         self.running = ssw_running
+        self.nlo = use_nlo
+
+        self._eves_xs = EvESCrossSectionNLO(species=flavor,
+                                           sw2=sw2_running(q=2.0),
+                                           nlo=True)
+    
     
     def simulate_eves(self, Er_min=0.0, n_samples=100, verbose=False, gL_mod=1.0, gR_mod=1.0):
         self.el_weights = []
@@ -314,13 +321,11 @@ class EvESFromNeutrinoFlux:
         cross_section_prefactor = (AVOGADRO * self.det_mat.density / (self.det_mat.z[0] + self.det_mat.n[0])) \
             * self.det_mat.z[0] * power(HBARC, 2) * (self.det_length * 100)
         
-        phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples)
+        phi_el_rnd = np.random.uniform(0.0, 2*pi, n_samples-1)
 
         # For each neutrino with energy Enu and angle theta_nu, simulate an Er spectrum
         # from Er = 0 to Er_max = 2 Enu**2 / (2 Enu + me)
-        if verbose:
-            print("Simulating Neutrino EvES scattering from flux...")
-        for i, nu in enumerate(self.nu_flux):
+        for nu in tqdm(self.nu_flux, desc="Simulating neutrino eves scattering..."):
             if self.energy_only_flux:
                 Enu = nu[0]
                 theta_nu = 0.0
@@ -333,27 +338,28 @@ class EvESFromNeutrinoFlux:
             Er_max = 2*Enu**2 / (2*Enu + M_E)
 
             # draw sqrt(N) flux samples
-            Er_rnd = np.linspace(Er_min, Er_max, n_samples)
+            er_edges = np.linspace(Er_min, Er_max, n_samples)
+            Er_samples = (er_edges[1:] + er_edges[:-1])/2
             mc_wgt = (Er_max - Er_min)/n_samples
 
             # for each Er subsample, dblquad the flux * cross section integrand
-            if turn_off_cross_term:
-                xs_weights = cross_section_prefactor * mc_wgt * dsigma_dEr_eves_noME(Er_rnd, Enu, self.sw2,
-                                                                   flavor=self.flavor, gL_mod=gL_mod, gR_mod=gR_mod,
-                                                                   cr=cr, running=self.running)
+            if self.nlo:
+                xs_weights = cross_section_prefactor * mc_wgt \
+                    * self._eves_xs.dsigma_dEl_NLO(Er_samples, Enu)
             else:
-                xs_weights = cross_section_prefactor * mc_wgt * dsigma_dEr_eves(Er_rnd, Enu, self.sw2,
-                                                                   flavor=self.flavor, gL_mod=gL_mod, gR_mod=gR_mod,
-                                                                   cr=cr, running=self.running)
+                xs_weights = cross_section_prefactor * mc_wgt \
+                    * dsigma_dEr_eves(Er_samples, Enu, self.sw2, \
+                        flavor=self.flavor, gL_mod=gL_mod, gR_mod=gR_mod, \
+                        cr=cr, running=self.running)
             
             # cosine of electron: cosBeta = ((Enu + me)/(Enu)) * sqrt(Er/(2me))
-            theta_el = arccos(np.clip( ((Enu + M_E)/Enu) * sqrt(Er_rnd/(2*M_E + Er_rnd)), a_min=-1.0, a_max=1.0))
+            theta_el = arccos(np.clip( ((Enu + M_E)/Enu) * sqrt(Er_samples/(2*M_E + Er_samples)), a_min=-1.0, a_max=1.0))
 
             # actual lab frame angle w.r.t. beam axis
             theta_z_el = arccos(cos(theta_el)*cos(theta_nu) + cos(phi_el_rnd)*sin(theta_el)*sin(theta_nu))
 
             self.el_weights.extend(wgt*xs_weights)
-            self.el_energies.extend(Er_rnd)
+            self.el_energies.extend(Er_samples)
             self.el_thetas.extend(theta_z_el)
             self.el_phis.extend(phi_el_rnd)
             self.el_parent_nu_energies.extend(np.ones(n_samples)*Enu)

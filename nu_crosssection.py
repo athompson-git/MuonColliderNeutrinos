@@ -2,6 +2,7 @@ import numpy as np
 from numpy import pi, cos, sin, sqrt, power
 import mpmath as mp
 from scipy.integrate import quad
+from numba import jit, int32
 
 import sys
 sys.path.append("../")
@@ -235,7 +236,7 @@ class EvESCrossSectionNLO:
         if 'tau' in species:
             self.species = 'tau'
         
-        self.nlo = nlo
+        self._nlo = nlo
         self.sw2 = sw2
         
         self.delta = ("e" in self.species)
@@ -303,11 +304,13 @@ class EvESCrossSectionNLO:
 
         return term1 + term2 + term3 + 1
 
-    def deltaI(self, beta, omega, omegap, *,  eps=1e-2, tiny=1e-15):
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+    def deltaI(self, El, Enu, eps=1e-2, tiny=1e-15):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
+        rho = M_E/El
+        l0 = M_E + Enu - El
 
-        denom = (2.0 * beta / np.where(rho == 0.0, np.inf, rho)) * M_E * omegap
-        cosDelta = (omega**2 - (beta**2 * M_E**2) / np.where(rho == 0.0, np.inf, rho**2) - omegap**2) / denom
+        denom = 2.0 * beta * rho * M_E * l0
+        cosDelta = (Enu**2 - np.power(beta * M_E, 2) - l0**2) / denom
         cosDelta = np.clip(cosDelta, -1.0, 1.0)
 
         Lbeta = np.log((1.0 + beta) / (1.0 - beta))
@@ -319,9 +322,10 @@ class EvESCrossSectionNLO:
 
         return (2.0 / beta) * (beta - 0.5 * Lbeta) * np.log(arg)
 
-    def deltaII(self, beta, Enu, El, eps=1e-15):
+    def deltaII(self, El, Enu, eps=1e-15):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
         l0 = M_E + Enu - El
-        rho = np.sqrt(np.clip(1.0 - beta**2, a_min=1e-10, a_max=np.inf))
+        rho = M_E/El
 
         cosDelta = np.clip((Enu**2 - np.power(beta * El, 2) - l0**2) / (2 * beta * El * l0),
                            a_min=-1.0, a_max=1.0)
@@ -352,11 +356,10 @@ class EvESCrossSectionNLO:
         out = np.nan_to_num((t_poly / beta) + np.log(B) - 1.0)
         return out
 
-    def deltav(self, beta, lam=1e-7):
-        # domain: 0 < beta < 1
-        if np.any(beta <= 0) or np.any(beta >= 1):
-            raise ValueError("beta must be in the range (0, 1) for deltav calculation.")
-        rho  = np.sqrt(1 - beta**2)
+    def deltav(self, El, lam=1e-7):
+        beta = np.sqrt(1 - np.power(M_E/El, 2))
+
+        rho  = M_E/El
         Lb   = np.log((1 + beta) / (1 - beta))
 
         termA = (beta - 0.5 * Lb) * np.log(M_E / lam)
@@ -382,9 +385,9 @@ class EvESCrossSectionNLO:
 
         dsigma_v = (ALPHA / np.pi) * self.dsigma_dEl_LO(El, Enu)
 
-        return 0.  # TODO(AT): remove as its obsolete
+        return dsigma_v  # TODO(AT): remove as its obsolete
     
-    def dsigma_NF(self, El, Enu, mu=1.0):
+    def dsigma_NF(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
         EnuPrime = M_E + Enu - El
         f2 = (M_E / El) / (4 * beta) * np.log((1.0 - beta) / (1.0 + beta))
@@ -436,34 +439,39 @@ class EvESCrossSectionNLO:
 
     def I_nonfact(self, xi, yi, zi, ri, qi, vi, El, Enu):
         # Generic non-factorizable kinematic piece
-        # takes in tuple of xi, yi, zi, ri, qi, vi (xyzqrv)
         prefactor = np.pi**2 / Enu**3
 
         beta = np.sqrt(1 - np.power(M_E/El, 2))
-        rho = np.sqrt(1.0 - beta**2)
+        rho = M_E/El
         l0 = M_E + Enu - El
 
         beta_doppler = (1+beta)/(1-beta)
         beta_plus_one_over_rho = (1 + beta)/rho
 
+        mplog = np.vectorize(lambda x: mp.log(x))
+
         log1_arg = (2*Enu/M_E) / (-1 + (1 + 2*Enu/M_E)/beta_plus_one_over_rho)
         log2_arg = (2*l0/M_E) / (1 + 2*Enu/M_E - beta_plus_one_over_rho)
         log3_arg = (1 - beta_plus_one_over_rho) / (beta_doppler - beta_plus_one_over_rho * (1 + 2*Enu/M_E))
 
-        plyl = np.vectorize(lambda x: (mp.polylog(2, x)).real)
+        summed_logs = yi*mplog(log1_arg).astype('float64') \
+                        + xi*mplog(log2_arg).astype('float64') \
+                        + ri*mplog(log3_arg).astype('float64')
 
+        plyl = np.vectorize(lambda x: (mp.polylog(2, x)).real)
+        
         plyl1 = (plyl(beta_plus_one_over_rho)).astype(float)
         plyl2 = (plyl(1 + 2*Enu/M_E)).astype(float)
         plyl3 = (plyl((1+2*Enu/M_E)/beta_plus_one_over_rho)).astype(float)
 
-        return prefactor * (zi + yi*np.log(log1_arg) + xi*np.log(log2_arg) + ri*log(log3_arg) \
+        return prefactor * (zi + summed_logs) \
                             + vi*(plyl1 - plyl2 + plyl3 - np.pi**2 / 6) \
-                            + qi*np.log(beta_doppler))
+                            + qi*np.log(beta_doppler)
 
     def IL_nonfact(self, El, Enu):
-        # Non-facttorizable kinematic pieces        
+        # Non-factorizable kinematic pieces        
         beta = np.sqrt(1 - np.power(M_E/El, 2))
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+        rho = M_E/El
 
         vL = 0.5 * (M_E**2 / 2 + 2*M_E*Enu + Enu**2)  # ch
         xL = (-2/15 * Enu**5/M_E**3 + 1/3 * Enu**3/M_E
@@ -490,7 +498,7 @@ class EvESCrossSectionNLO:
 
     def IR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+        rho = M_E/El
         l0 = M_E + Enu - El
 
         vR = 0.5 * (l0**2 + M_E**2 * (beta**2 + rho)/rho**2)  # ch
@@ -509,7 +517,6 @@ class EvESCrossSectionNLO:
             + ( (-23*beta**3 + 14*beta**2 + 41*beta - 2)/(30*rho*(1 + beta)**2) \
                 + (-28*beta*rho**2 + 43*beta**2 + 2)/(30*rho**2 * (1 + beta)) )*M_E**2  # ch
         
-        
         zw4 = (1/15) * (1 - rho/(1 + beta))  # ch
         zRw4 = -8/(15*rho) + (8 - beta)/(15*(1 + beta))  # ch
         zRw3 = (113*beta**2 - 2*beta - 133)/(30*(1 + beta)*rho) - (143*beta**2 - 34*beta - 133)/(30*rho**2)  # ch
@@ -518,11 +525,12 @@ class EvESCrossSectionNLO:
         zR0 = (270*beta**2 - 269)/(60*rho**3) + (309*beta**4 - 839*beta**2 + 538)/(120*rho**4)  # ch
         zR = (2*zw4*Enu**5 + zRw4*M_E*Enu**4 + zRw3*M_E**2 * Enu**3 + zRw2*M_E**3 * Enu**2 \
             + zRw*Enu*M_E**4 + zR0*M_E**5) / (M_E**2*(M_E + 2*Enu))  # ch
+
         return self.I_nonfact(xR, yR, zR, rR, qR, vR, El=El, Enu=Enu)
 
     def ILR_nonfact(self, El, Enu):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
-        rho = np.sqrt(np.clip(1.0 - beta**2, 0.0, None))
+        rho = M_E/El
         l0 = M_E + Enu - El
 
         vLR = 0.5 * M_E * (2*l0 - M_E)  # ch
@@ -543,11 +551,13 @@ class EvESCrossSectionNLO:
         dsigma = 0.0
         prefactor = (ALPHA/4/np.pi**4) * M_E * Enu
         if self.cp == 1:
-            dsigma = prefactor * (cL_sq_eff*self.IL_nonfact(El, Enu) + cR_sq_eff * self.IR_nonfact(El, Enu) \
-                                    + cLcR_eff*self.ILR_nonfact(El, Enu))
+            dsigma = prefactor * (cL_sq_eff*self.IL_nonfact(El, Enu) \
+                                + cR_sq_eff * self.IR_nonfact(El, Enu) \
+                                + cLcR_eff*self.ILR_nonfact(El, Enu))
         elif self.cp == -1:
-            dsigma = prefactor * (cL_sq_eff * self.IR_nonfact(El, Enu) + cR_sq_eff*self.IL_nonfact(El, Enu) \
-                                    + cLcR_eff*self.ILR_nonfact(El, Enu))
+            dsigma = prefactor * (cL_sq_eff * self.IR_nonfact(El, Enu) \
+                                + cR_sq_eff*self.IL_nonfact(El, Enu) \
+                                + cLcR_eff*self.ILR_nonfact(El, Enu))
         
         return dsigma
 
@@ -581,15 +591,21 @@ class EvESCrossSectionNLO:
 
     def dsigma_dEl_NLO(self, El, Enu, mu=2000.0):
         beta = np.sqrt(1 - np.power(M_E/El, 2))
+        if np.any(beta <= 0) or np.any(beta >= 1):
+            raise ValueError("beta must be in the range (0, 1).")
+
         EnuPrime = M_E + Enu - El
-
-        deltas = (ALPHA/np.pi) * (self.deltav(beta) + self.delta_soft(beta) \
-                                + self.deltaI(beta, Enu, EnuPrime) \
-                                + self.deltaII(beta, Enu, EnuPrime))
+        dsigma = np.zeros_like(El)
+        deltas = (ALPHA/np.pi) * (self.deltav(El) \
+                                + self.delta_soft(beta) \
+                                + self.deltaI(El, Enu) \
+                                + self.deltaII(El, Enu))
         
-        dsigma_lo_corr = (1 + deltas)*self.dsigma_dEl_LO(El, Enu)
+        dsigma += (1 + deltas)*self.dsigma_dEl_LO(El, Enu)
+        dsigma += self.dsigma_dyn(El, Enu, mu)
+        #dsigma += self.dsigma_NF_total(El, Enu)
 
-        return dsigma_lo_corr + self.dsigma_dyn(El, Enu, mu) + self.dsigma_NF_total(El, Enu)
+        return dsigma
 
 
 
